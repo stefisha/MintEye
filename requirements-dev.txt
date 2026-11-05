@@ -1,0 +1,3 @@
+-r requirements.txt
+# Optional load-test runner; not needed to serve the application.
+locust==2.31.8

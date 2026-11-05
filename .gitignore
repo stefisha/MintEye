@@ -1,3 +1,27 @@
-venv
-.idea
+# Python environments and generated files
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local configuration and credentials
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Runtime output
+logs/
+*.log
+locust*.csv
+locust*.html
+
+# Editor and operating system files
+.idea/
+.vscode/
+.DS_Store

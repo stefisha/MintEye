@@ -1,23 +1,24 @@
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import os
-import json
 import requests
 from PIL import Image
 import numpy as np
-import tensorflow as tf
 import io
 import pickle
-import traceback
 from dotenv import load_dotenv  # Import the dotenv package
 import logging
-from logging.handlers import RotatingFileHandler, WatchedFileHandler
+from logging.handlers import WatchedFileHandler
+from pathlib import Path
 
-# Load environment variables from .env file
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent
+
+# Keep local configuration relative to the application, not the shell directory.
+load_dotenv(BASE_DIR / '.env')
 
 # Suppress TensorFlow warnings
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
+import tensorflow as tf
 
 # Flask app setup
 app = Flask(__name__)
@@ -25,10 +26,9 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Configure logging
 if not app.debug:
-    if not os.path.exists('logs'):
-        os.mkdir('logs')
+    (BASE_DIR / 'logs').mkdir(exist_ok=True)
     # Use WatchedFileHandler instead of RotatingFileHandler
-    file_handler = WatchedFileHandler('logs/app.log')
+    file_handler = WatchedFileHandler(BASE_DIR / 'logs' / 'app.log')
     file_handler.setFormatter(logging.Formatter(
         '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
     ))
@@ -42,15 +42,15 @@ RPC_URL_DAS = os.getenv('RPC_URL_DAS')
 
 # Verify that the environment variables are loaded
 if not RPC_URL_DAS:
-    raise ValueError("Missing environment variables. Please check your .env file.")
+    raise ValueError("Set RPC_URL_DAS in your environment or local .env file; see .env.example.")
 
 # Load the MobileNetV3 fine-tuned image model
-image_model = tf.keras.models.load_model("models/mobilenetv3_tunned.keras", compile=False)
+image_model = tf.keras.models.load_model(BASE_DIR / "models/mobilenetv3_tunned.keras", compile=False)
 
 # Load the pre-trained metadata models
 metadata_models = []
 for i in range(5):
-    with open(f'models/model_{i}.pkl', 'rb') as f:
+    with open(BASE_DIR / 'models' / f'model_{i}.pkl', 'rb') as f:
         metadata_models.append(pickle.load(f))
 
 class_names = {
@@ -73,7 +73,7 @@ def download_image(url):
         response.raise_for_status()  # Check for request errors
         return Image.open(io.BytesIO(response.content))  # Load image in memory
     except requests.exceptions.RequestException as e:
-        app.logger.error(f"Can't download image from {url}: {e}")
+        app.logger.error("Image download failed (%s)", type(e).__name__)
         return None
 
 # Function to extract the image URL from the metadata
@@ -126,12 +126,12 @@ def fetch_nft_metadata(mint_address):
         }
 
         # Request metadata from RPC DAS
-        response = requests.post(RPC_URL_DAS, headers=headers, json=payload)
+        response = requests.post(RPC_URL_DAS, headers=headers, json=payload, timeout=15)
+        response.raise_for_status()
         
-        # Log the status code and response for debugging
+        # Log status only; provider responses and exception URLs can contain credentials.
         app.logger.info(f"Fetching metadata for mint: {mint_address}")
         app.logger.info(f"Status Code: {response.status_code}")
-        app.logger.info(f"Response: {response.text}")
 
         data = response.json()
 
@@ -141,8 +141,8 @@ def fetch_nft_metadata(mint_address):
             app.logger.error(f"Could not fetch metadata for the NFT: {mint_address}")
             raise Exception("Could not fetch metadata for the given NFT.")
     except requests.exceptions.RequestException as e:
-        app.logger.error(f"Error fetching NFT metadata for {mint_address}: {e}")
-        raise Exception(f"Error fetching NFT metadata: {str(e)}")
+        app.logger.error("NFT metadata request failed (%s)", type(e).__name__)
+        raise RuntimeError("The NFT metadata provider could not be reached.") from None
 
 # Home page - renders the index.html
 @app.route('/')
@@ -198,13 +198,12 @@ def fetch_nft():
         return jsonify({
             "image_url": image_url if image_url else None,
             "prediction": prediction_label,
-            "probability": probability_output
+            "probability": float(probability_output)
         })
 
     except Exception as e:
-        traceback.print_exc()
-        app.logger.error(f"Error in fetch_nft route: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        app.logger.error("NFT classification failed (%s)", type(e).__name__)
+        return jsonify({"error": "Unable to classify this NFT. Please try again later."}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=os.getenv('FLASK_DEBUG', '0') == '1')
