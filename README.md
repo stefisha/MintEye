@@ -12,6 +12,8 @@
 
 Enter a Solana NFT mint address to retrieve its metadata, analyze its image and available metadata features, and display a `legit` or `scam` prediction.
 
+I developed and deployed the application’s frontend and backend, bringing NFT classification research into an interactive tool. The underlying research also informed my [master’s thesis](https://github.com/stefisha/DetectingNFTs-MasterThesis). By launch, interest in NFTs had declined substantially, limiting the project’s traction.
+
 MintEye was built as a hackathon experiment. The labels are model predictions, not verified assessments of an NFT's safety. This repository contains the original web interface and trained inference artifacts; the training dataset and training notebooks are not included.
 
 ## How it works
